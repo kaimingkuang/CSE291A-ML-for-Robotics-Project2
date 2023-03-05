@@ -22,9 +22,7 @@ from utils import ContinuousTaskWrapper, SuccessInfoWrapper
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cfg", required=True, help="Config name.")
-    parser.add_argument("--model-path", default=None)
-    parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--name", default="")
+    parser.add_argument("--model-path", required=True)
     args = parser.parse_args()
 
     return args
@@ -33,24 +31,6 @@ def parse_args():
 def main():
     args = parse_args()
     cfg = OmegaConf.load(f"configs/{args.cfg}.yaml")
-    if args.name != "":
-        cfg.trial_name = args.name
-
-    if not args.debug:
-        wandb.login(key="afc534a6cee9821884737295e042db01471fed6a")
-        wandb.init(
-            entity="kaiming-kuang",
-            # set the wandb project where this run will be logged
-            project="cse-291a-project2",
-            # track hyperparameters and run metadata
-            config=cfg,
-            sync_tensorboard=True,
-            monitor_gym=True
-        )
-        wandb.run.name = cfg.trial_name
-
-    log_dir = f"{cfg.log_dir}/{cfg.trial_name}"
-    os.makedirs(log_dir, exist_ok=True)
 
     if "env_seed" in cfg.env:
         set_random_seed(cfg.env.seed)
@@ -84,7 +64,8 @@ def main():
         return _init
 
     # create eval environment
-    record_dir = osp.join(log_dir, "videos")
+    log_dir = osp.join("/kaiming-fast-vol/workspace/CSE291A-ML-for-Robotics-Project2/logs", cfg.trial_name)
+    record_dir = osp.join(log_dir, "videos_eval")
     eval_env = SubprocVecEnv(
         [make_env(cfg.env.name, record_dir=record_dir) for _ in range(1)]
     )
@@ -92,20 +73,9 @@ def main():
     eval_env.seed(cfg.env.seed)
     eval_env.reset()
 
-    # Create vectorized environments for training
-    env = SubprocVecEnv(
-        [
-            make_env(cfg.env.name, max_episode_steps=cfg.train.max_eps_steps)
-            for _ in range(cfg.env.n_env_procs)
-        ]
-    )
-    env = VecMonitor(env)
-    env.seed(cfg.env.seed)
-    env.reset()
-
     model = eval(cfg.model_name)(
         "MlpPolicy",
-        env,
+        eval_env,
         batch_size=cfg.train.batch_size,
         gamma=cfg.train.gamma,
         learning_rate=cfg.train.lr,
@@ -114,43 +84,10 @@ def main():
         **cfg.model_kwargs
     )
 
-    # if args.eval:
     # load model
     if args.model_path is not None:
         model_path = args.model_path
         model.set_parameters(model_path)
-
-    # define callbacks to periodically save our model and evaluate it to help monitor training
-    # the below freq values will save every 10 rollouts
-    eval_callback = EvalCallback(
-        eval_env,
-        best_model_save_path=log_dir,
-        log_path=log_dir,
-        eval_freq=10 * cfg.train.rollout_steps // cfg.env.n_env_procs,
-        deterministic=True,
-        render=False,
-    )
-    checkpoint_callback = CheckpointCallback(
-        save_freq=10 * cfg.train.rollout_steps // cfg.env.n_env_procs,
-        save_path=log_dir,
-        name_prefix="rl_model",
-        save_replay_buffer=False,
-        save_vecnormalize=False,
-    )
-    callbacks = [checkpoint_callback, eval_callback]
-    if not args.debug:
-        wandb_callback = WandbCallback()
-        callbacks.append(wandb_callback)
-    # Train an agent with PPO for args.total_timesteps interactions
-    model.learn(
-        cfg.train.total_steps,
-        callback=callbacks,
-    )
-    # Save the final model
-    model.save(osp.join(log_dir, "latest_model"))
-
-    # load the best model
-    model.set_parameters(osp.join(log_dir, "best_model.zip"))
 
     # Evaluate the model
     returns, ep_lens = evaluate_policy(
@@ -166,9 +103,6 @@ def main():
     success = np.array(ep_lens) < 200
     success_rate = success.mean()
     print("Success Rate:", success_rate)
-
-    if not args.debug:
-        wandb.finish()
 
 
 if __name__ == "__main__":

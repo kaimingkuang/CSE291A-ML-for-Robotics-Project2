@@ -1,10 +1,10 @@
-trial_name: turnfaucet_gen_phase1_sac
+trial_name: liftcube_sac_default
 log_dir: logs
 
 env:
-    name: TurnFaucet-v2
+    name: LiftCube-v1
     # number of parallel envs
-    n_env_procs: 32
+    n_env_procs: 8
     # observation mode
     obs_mode: "state"
     # control mode/action mode
@@ -15,13 +15,13 @@ train:
     # max number of steps in one training episode
     max_eps_steps: 200
     # total number of training steps
-    total_steps: 25000000
+    total_steps: 1000000
     # number of steps to run before each network evaluation
     rollout_steps: 5000
     # batch size in each update
     batch_size: 256
     # reward discounting factor
-    gamma: 0.99
+    gamma: 0.85
     lr: 0.0003
 
 model_name: SAC
@@ -37,3 +37,4 @@ eval:
     eval_freq: 50
     # number of episodes to run in each evaluation
     n_eval_episodes: 10
+    n_final_eval_episodes: 100

@@ -23,6 +23,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cfg", required=True, help="Config name.")
     parser.add_argument("--model-path", required=True)
+    parser.add_argument("--model-ids", default=None)
     args = parser.parse_args()
 
     return args
@@ -31,6 +32,8 @@ def parse_args():
 def main():
     args = parse_args()
     cfg = OmegaConf.load(f"configs/{args.cfg}.yaml")
+    if args.model_ids is not None:
+        cfg.model_ids = args.model_ids
 
     if "env_seed" in cfg.env:
         set_random_seed(cfg.env.seed)
@@ -44,12 +47,21 @@ def main():
             # NOTE: Import envs here so that they are registered with gym in subprocesses
             import mani_skill2.envs
 
-            env = gym.make(
-                env_id,
-                obs_mode=cfg.env.obs_mode,
-                reward_mode="dense",
-                control_mode=cfg.env.act_mode
-            )
+            if args.model_ids is not None:
+                env = gym.make(
+                    env_id,
+                    obs_mode=cfg.env.obs_mode,
+                    reward_mode="dense",
+                    control_mode=cfg.env.act_mode,
+                    model_ids=cfg.model_ids.split(",")
+                )
+            else:
+                env = gym.make(
+                    env_id,
+                    obs_mode=cfg.env.obs_mode,
+                    reward_mode="dense",
+                    control_mode=cfg.env.act_mode
+                )
             # For training, we regard the task as a continuous task with infinite horizon.
             # you can use the ContinuousTaskWrapper here for that
             if max_episode_steps is not None:

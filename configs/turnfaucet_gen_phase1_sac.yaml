@@ -37,3 +37,4 @@ eval:
     eval_freq: 50
     # number of episodes to run in each evaluation
     n_eval_episodes: 10
+    n_final_eval_episodes: 100

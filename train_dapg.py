@@ -2,6 +2,7 @@
 import argparse
 import os
 import os.path as osp
+from copy import deepcopy
 
 import gym
 import mani_skill2.envs
@@ -9,13 +10,14 @@ import numpy as np
 import wandb
 from mani_skill2.utils.wrappers import RecordEpisode
 from omegaconf import OmegaConf
-from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.evaluation import evaluate_policy
-from stable_baselines3.common.utils import get_linear_fn, set_random_seed
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, VecVideoRecorder
+from stable_baselines3.common.utils import set_random_seed
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
 from wandb.integration.sb3 import WandbCallback
 
+from dapg import DAPG
+from demo import DemoDataset
 from utils import ContinuousTaskWrapper, SuccessInfoWrapper
 
 
@@ -23,6 +25,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cfg", required=True, help="Config name.")
     parser.add_argument("--model-path", default=None)
+    parser.add_argument("--demo-path", required=True)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--name", default="")
     args = parser.parse_args()
@@ -48,6 +51,8 @@ def main():
             monitor_gym=True
         )
         wandb.run.name = cfg.trial_name
+    else:
+        cfg.env.n_env_procs = 2
 
     log_dir = f"{cfg.log_dir}/{cfg.trial_name}"
     os.makedirs(log_dir, exist_ok=True)
@@ -103,7 +108,15 @@ def main():
     env.seed(cfg.env.seed)
     env.reset()
 
-    model = eval(cfg.model_name)(
+    # demo dataloader
+    demo_env = make_env(cfg.env.name)()
+    demo_env.reset()
+    demo_ds = DemoDataset(args.demo_path, demo_env)
+    demo_dl = DemoDataset.get_dataloader(demo_ds, cfg.train.demo_batch_size)
+
+    model = DAPG(
+        cfg.train.lamb_0,
+        cfg.train.lamb_1,
         "MlpPolicy",
         env,
         batch_size=cfg.train.batch_size,
@@ -145,6 +158,7 @@ def main():
     model.learn(
         cfg.train.total_steps,
         callback=callbacks,
+        demos=demo_dl
     )
     # Save the final model
     model.save(osp.join(log_dir, "latest_model"))

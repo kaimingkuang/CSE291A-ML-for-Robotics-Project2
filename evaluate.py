@@ -27,12 +27,7 @@ def parse_args():
     return args
 
 
-def main():
-    args = parse_args()
-    cfg = OmegaConf.load(f"configs/{args.cfg}.yaml")
-    if args.model_ids is not None:
-        cfg.model_ids = args.model_ids
-
+def single_evaluate(cfg, model_ids, render, model_path):
     if "seed" in cfg.env:
         set_random_seed(cfg.env.seed)
 
@@ -45,18 +40,18 @@ def main():
             # NOTE: Import envs here so that they are registered with gym in subprocesses
             import mani_skill2.envs
 
-            if args.model_ids is not None:
+            if model_ids is not None:
                 env = gym.make(
                     env_id,
                     obs_mode=cfg.env.obs_mode,
                     reward_mode="dense",
                     control_mode=cfg.env.act_mode,
-                    model_ids=cfg.model_ids.split(",")
+                    model_ids=model_ids.split(",")
                 )
             else:
                 env = gym.make(
                     env_id,
-                    obs_mode=cfg.env.obs_mode,
+                    model_idsobs_mode=cfg.env.obs_mode,
                     reward_mode="dense",
                     control_mode=cfg.env.act_mode
                 )
@@ -74,8 +69,8 @@ def main():
         return _init
 
     # create eval environment
-    log_dir = osp.join("/kaiming-fast-vol/workspace/CSE291A-ML-for-Robotics-Project2/logs", cfg.trial_name)
-    record_dir = osp.join(log_dir, "videos_eval") if args.render else None
+    log_dir = osp.join("logs", cfg.trial_name)
+    record_dir = osp.join(log_dir, "videos_eval") if render else None
     eval_env = SubprocVecEnv(
         [make_env(cfg.env.name, record_dir=record_dir) for _ in range(cfg.env.n_env_procs)]
     )
@@ -95,8 +90,8 @@ def main():
     )
 
     # load model
-    if args.model_path is not None:
-        model_path = args.model_path
+    if model_path is not None:
+        model_path = model_path
         model.set_parameters(model_path)
 
     # Evaluate the model
@@ -104,13 +99,22 @@ def main():
         model,
         eval_env,
         deterministic=True,
-        render=args.render,
+        render=render,
         return_episode_rewards=True,
         n_eval_episodes=cfg.eval.n_final_eval_episodes,
     )
     success = np.array(ep_lens) < 200
     success_rate = success.mean()
-    print(f"Model {args.model_ids[0]} success Rate: {success_rate}", )
+    print(f"Model {model_ids} success rate: {success_rate}")
+
+    return success_rate
+
+
+def main():
+    args = parse_args()
+    cfg = OmegaConf.load(f"configs/{args.cfg}.yaml")
+
+    single_evaluate(cfg, args.model_ids, args.render, args.model_path)
 
 
 if __name__ == "__main__":

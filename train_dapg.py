@@ -57,7 +57,7 @@ def main():
     log_dir = f"{cfg.log_dir}/{cfg.trial_name}"
     os.makedirs(log_dir, exist_ok=True)
 
-    if "env_seed" in cfg.env:
+    if "seed" in cfg.env:
         set_random_seed(cfg.env.seed)
 
     def make_env(

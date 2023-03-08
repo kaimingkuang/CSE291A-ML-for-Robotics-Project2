@@ -37,11 +37,12 @@ def main():
         cfg.trial_name = args.name
 
     if not args.debug:
-        wandb.login(key="afc534a6cee9821884737295e042db01471fed6a")
+        wandb_cfg = OmegaConf.load(f"wandb_cfg.yaml")
+        wandb.login(key=wandb_cfg.key)
         wandb.init(
-            entity="kaiming-kuang",
+            entity=wandb_cfg.entity,
             # set the wandb project where this run will be logged
-            project="cse-291a-project2",
+            project=wandb_cfg.project,
             # track hyperparameters and run metadata
             config=cfg,
             sync_tensorboard=True,
@@ -52,7 +53,7 @@ def main():
     log_dir = f"{cfg.log_dir}/{cfg.trial_name}"
     os.makedirs(log_dir, exist_ok=True)
 
-    if "env_seed" in cfg.env:
+    if "seed" in cfg.env:
         set_random_seed(cfg.env.seed)
 
     def make_env(

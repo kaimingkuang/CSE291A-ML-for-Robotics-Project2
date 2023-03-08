@@ -1,20 +1,17 @@
 # Import required packages
 import argparse
-import os
 import os.path as osp
 
 import gym
 import mani_skill2.envs
 import numpy as np
-import wandb
 from mani_skill2.utils.wrappers import RecordEpisode
 from omegaconf import OmegaConf
 from stable_baselines3 import PPO, SAC
-from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+
 from stable_baselines3.common.evaluation import evaluate_policy
-from stable_baselines3.common.utils import get_linear_fn, set_random_seed
+from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, VecVideoRecorder
-from wandb.integration.sb3 import WandbCallback
 
 from utils import ContinuousTaskWrapper, SuccessInfoWrapper
 
@@ -24,6 +21,7 @@ def parse_args():
     parser.add_argument("--cfg", required=True, help="Config name.")
     parser.add_argument("--model-path", required=True)
     parser.add_argument("--model-ids", default=None)
+    parser.add_argument("--render", action="store_true")
     args = parser.parse_args()
 
     return args
@@ -35,7 +33,7 @@ def main():
     if args.model_ids is not None:
         cfg.model_ids = args.model_ids
 
-    if "env_seed" in cfg.env:
+    if "seed" in cfg.env:
         set_random_seed(cfg.env.seed)
 
     def make_env(
@@ -77,9 +75,9 @@ def main():
 
     # create eval environment
     log_dir = osp.join("/kaiming-fast-vol/workspace/CSE291A-ML-for-Robotics-Project2/logs", cfg.trial_name)
-    record_dir = osp.join(log_dir, "videos_eval")
+    record_dir = osp.join(log_dir, "videos_eval") if args.render else None
     eval_env = SubprocVecEnv(
-        [make_env(cfg.env.name, record_dir=record_dir) for _ in range(1)]
+        [make_env(cfg.env.name, record_dir=record_dir) for _ in range(cfg.env.n_env_procs)]
     )
     eval_env = VecMonitor(eval_env)  # attach this so SB3 can log reward metrics
     eval_env.seed(cfg.env.seed)
@@ -106,15 +104,13 @@ def main():
         model,
         eval_env,
         deterministic=True,
-        render=False,
+        render=args.render,
         return_episode_rewards=True,
         n_eval_episodes=cfg.eval.n_final_eval_episodes,
     )
-    print("Returns", returns)
-    print("Episode Lengths", ep_lens)
     success = np.array(ep_lens) < 200
     success_rate = success.mean()
-    print("Success Rate:", success_rate)
+    print(f"Model {args.model_ids[0]} success Rate: {success_rate}", )
 
 
 if __name__ == "__main__":

@@ -22,7 +22,8 @@ def main():
         succ_rate = single_evaluate(cfg, str(model_id), False, args.model_path)
         res[model_id] = succ_rate
     
-    with open("eval_gen_phase1_res.json", "w") as f:
+    save_dir = os.path.dirname(args.model_path)
+    with open(os.path.join(save_dir, "eval_gen_phase1_res.json"), "w") as f:
         json.dump(res, f)
 
 

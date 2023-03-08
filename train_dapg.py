@@ -109,9 +109,7 @@ def main():
     env.reset()
 
     # demo dataloader
-    demo_env = make_env(cfg.env.name)()
-    demo_env.reset()
-    demo_ds = DemoDataset(args.demo_path, demo_env)
+    demo_ds = DemoDataset(args.demo_path)
     demo_dl = DemoDataset.get_dataloader(demo_ds, cfg.train.demo_batch_size)
 
     model = DAPG(

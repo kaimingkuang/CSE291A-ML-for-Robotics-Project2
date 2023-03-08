@@ -66,8 +66,6 @@ class DAPG(PPO):
             approx_kl_divs = []
             # Do a complete pass on the rollout buffer
             # for rollout_data in self.rollout_buffer.get(self.batch_size):
-            if demos is None:
-                demos = [None] * len(self.rollout_buffer)
             for rollout_data, demo_data in zip(self.rollout_buffer.get(self.batch_size), demos):
                 actions = rollout_data.actions
                 if isinstance(self.action_space, spaces.Discrete):
@@ -140,11 +138,12 @@ class DAPG(PPO):
 
                 # demo loss term
                 if demos is not None:
-                    demo_obs, demo_acts, demo_env_states = demo_data
+                    demo_obs, demo_acts = demo_data
                     demo_obs, demo_acts = demo_obs.to(loss.device), demo_acts.to(loss.device)
                     _, log_prob, _ = self.policy.evaluate_actions(demo_obs, demo_acts)
                     demo_loss_weight = rollout_data.advantages.max().clone().detach() * self.lamb_0 * self.lamb_1 ** self._n_updates
                     demo_loss = -(log_prob * demo_loss_weight).mean()
+
                     loss += demo_loss
 
                 # Optimization step

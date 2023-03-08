@@ -21,14 +21,13 @@ def load_h5_data(data):
 
 class DemoDataset(Dataset):
 
-    def __init__(self, dataset_file, env, load_count=-1):
+    def __init__(self, dataset_file, load_count=-1):
         self.dataset_file = dataset_file
         # for details on how the code below works, see the
         # quick start tutorial
         self.data = h5py.File(dataset_file, "r")
         json_path = dataset_file.replace(".h5", ".json")
         self.json_data = load_json(json_path)
-        self.env = env
         self.episodes = self.json_data["episodes"]
         self.env_info = self.json_data["env_info"]
         self.env_id = self.env_info["env_id"]
@@ -36,7 +35,6 @@ class DemoDataset(Dataset):
 
         self.observations = []
         self.actions = []
-        self.env_states = []
         self.total_frames = 0
         if load_count == -1:
             load_count = len(self.episodes)
@@ -48,7 +46,6 @@ class DemoDataset(Dataset):
             # is the terminal observation which has no actions
             self.observations.append(trajectory["obs"][:-1])
             self.actions.append(trajectory["actions"])
-            self.env_states += [x for x in trajectory["env_states"][:-1]]
         self.observations = np.vstack(self.observations)
         self.actions = np.vstack(self.actions)
 
@@ -58,19 +55,17 @@ class DemoDataset(Dataset):
     def __getitem__(self, idx):
         action = torch.from_numpy(self.actions[idx]).float()
         obs = torch.from_numpy(self.observations[idx]).float()
-        env_state = self.env_states[idx]
 
-        return obs, action, env_state
+        return obs, action
 
     @staticmethod
     def collate_fn(samples):
         obs = torch.stack([sample[0] for sample in samples])
         act = torch.stack([sample[1] for sample in samples])
-        env_state = list(chain(*[sample[2] for sample in samples]))
 
-        return obs, act, env_state
+        return obs, act
 
     @staticmethod
-    def get_dataloader(dataset, batch_size, shuffle=False, num_workers=0):
+    def get_dataloader(dataset, batch_size, shuffle=True, num_workers=0):
         return DataLoader(dataset, batch_size, shuffle,
             num_workers=num_workers, collate_fn=DemoDataset.collate_fn)

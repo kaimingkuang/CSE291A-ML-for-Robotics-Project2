@@ -58,6 +58,7 @@ def main():
 
     def make_env(
         env_id: str,
+        model_ids=None,
         max_episode_steps: int = None,
         record_dir: str = None,
     ):
@@ -65,12 +66,21 @@ def main():
             # NOTE: Import envs here so that they are registered with gym in subprocesses
             import mani_skill2.envs
 
-            env = gym.make(
-                env_id,
-                obs_mode=cfg.env.obs_mode,
-                reward_mode="dense",
-                control_mode=cfg.env.act_mode
-            )
+            if model_ids is not None:
+                env = gym.make(
+                    env_id,
+                    obs_mode=cfg.env.obs_mode,
+                    reward_mode="dense",
+                    control_mode=cfg.env.act_mode,
+                    model_ids=model_ids.split(",")
+                )
+            else:
+                env = gym.make(
+                    env_id,
+                    model_idsobs_mode=cfg.env.obs_mode,
+                    reward_mode="dense",
+                    control_mode=cfg.env.act_mode
+                )
             # For training, we regard the task as a continuous task with infinite horizon.
             # you can use the ContinuousTaskWrapper here for that
             if max_episode_steps is not None:
@@ -87,7 +97,7 @@ def main():
     # create eval environment
     record_dir = osp.join(log_dir, "videos")
     eval_env = SubprocVecEnv(
-        [make_env(cfg.env.name, record_dir=record_dir) for _ in range(1)]
+        [make_env(cfg.env.name, cfg.env.model_ids, record_dir=record_dir) for _ in range(1)]
     )
     eval_env = VecMonitor(eval_env)  # attach this so SB3 can log reward metrics
     eval_env.seed(cfg.env.seed)
@@ -96,7 +106,7 @@ def main():
     # Create vectorized environments for training
     env = SubprocVecEnv(
         [
-            make_env(cfg.env.name, max_episode_steps=cfg.train.max_eps_steps)
+            make_env(cfg.env.name, cfg.env.model_ids, max_episode_steps=cfg.train.max_eps_steps)
             for _ in range(cfg.env.n_env_procs)
         ]
     )
@@ -119,6 +129,9 @@ def main():
     # load model
     if args.model_path is not None:
         model_path = args.model_path
+        model.set_parameters(model_path)
+    if "init_model_path" in cfg:
+        model_path = cfg.init_model_path
         model.set_parameters(model_path)
 
     # define callbacks to periodically save our model and evaluate it to help monitor training

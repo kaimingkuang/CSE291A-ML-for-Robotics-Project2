@@ -1,4 +1,4 @@
-trial_name: turnfaucet_spe_phase2_sac_spe0_spe1_spe2_spe3_spe4_spe5_spe6_spe7_spe8
+trial_name: turnfaucet_spe_phase2_sac_spe8
 log_dir: logs
 env:
   name: TurnFaucet-v2

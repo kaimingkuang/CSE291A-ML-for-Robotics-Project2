@@ -67,9 +67,10 @@ def main():
         grouping[f"spe{i}"] = low_perf_models[beg:end]
     
     cfg = OmegaConf.load(f"configs/{args.cfg}.yaml")
+    trial_name = cfg.trial_name.replace("gen_phase1", "spe_phase2")
     for spe_id, model_ids in grouping.items():
         cfg.env.model_ids = ",".join(model_ids)
-        cfg.trial_name = cfg.trial_name.replace("gen_phase1", "spe_phase2") + f"_{spe_id}"
+        cfg.trial_name = f"{trial_name}_{spe_id}"
         cfg.train.total_steps = args.n_steps_spe
         cfg.init_model_path = args.spe_init
         with open(f"configs/{args.cfg.replace('gen_phase1', 'spe_phase2')}_{spe_id}.yaml", "w") as f:

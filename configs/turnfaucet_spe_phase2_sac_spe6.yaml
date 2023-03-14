@@ -6,10 +6,10 @@ env:
   obs_mode: state
   act_mode: pd_ee_delta_pose
   seed: 42
-  model_ids: 5075,5025,5061,5072,5004
+  model_ids: 5072,5049,5012,5014,5018
 train:
   max_eps_steps: 200
-  total_steps: 1500000
+  total_steps: 5000000
   rollout_steps: 5000
   batch_size: 256
   gamma: 0.99
@@ -25,4 +25,4 @@ eval:
   eval_freq: 50
   n_eval_episodes: 10
   n_final_eval_episodes: 100
-init_model_path: /kaiming-fast-vol/workspace/CSE291A-ML-for-Robotics-Project2/logs/turnfaucet_gen_phase1_sac/rl_model_11146432_steps.zip
+init_model_path: logs/turnfaucet_gen_phase1_sac/rl_model_12096128_steps.zip

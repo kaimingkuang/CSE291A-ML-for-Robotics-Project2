@@ -14,7 +14,7 @@ def main():
         help="The success rate upper bound requiring specialist training.")
     parser.add_argument("--n-model-spe", default=5,
         help="The number of models each specialist is trained on.")
-    parser.add_argument("--n-steps-spe", default=1500000, type=int,
+    parser.add_argument("--n-steps-spe", default=5000000, type=int,
         help="The number of training steps for each specialist.")
     parser.add_argument("--cfg", required=True)
     parser.add_argument("--spe-init", required=True,

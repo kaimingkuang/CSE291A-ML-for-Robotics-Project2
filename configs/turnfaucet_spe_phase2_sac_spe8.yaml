@@ -25,4 +25,4 @@ eval:
   eval_freq: 50
   n_eval_episodes: 10
   n_final_eval_episodes: 100
-init_model_path: /kaiming-fast-vol/workspace/CSE291A-ML-for-Robotics-Project2/logs/turnfaucet_gen_phase1_sac/rl_model_11146432_steps.zip
+init_model_path: logs/turnfaucet_gen_phase1_sac/rl_model_11146432_steps.zip

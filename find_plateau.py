@@ -16,7 +16,7 @@ def main():
         help="The sliding window size by percentage of training.")
     parser.add_argument("--imp-margin", default=50,
         help="The improvement margin when searching plateaus.")
-    parser.add_argument("--plateau-beg-pct", default=0.15,
+    parser.add_argument("--plateau-beg-pct", default=0.15, type=float,
         help="The start step to search plateaus by percentage of training.")
     args = parser.parse_args()
 

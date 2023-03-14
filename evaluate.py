@@ -51,7 +51,8 @@ def single_evaluate(cfg, model_ids, render, model_path):
             else:
                 env = gym.make(
                     env_id,
-                    model_idsobs_mode=cfg.env.obs_mode,
+                    model_ids,
+                    obs_mode=cfg.env.obs_mode,
                     reward_mode="dense",
                     control_mode=cfg.env.act_mode
                 )

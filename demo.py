@@ -69,3 +69,25 @@ class DemoDataset(Dataset):
     def get_dataloader(dataset, batch_size, shuffle=True, num_workers=0):
         return DataLoader(dataset, batch_size, shuffle,
             num_workers=num_workers, collate_fn=DemoDataset.collate_fn)
+
+
+class DemoNpzDataset(Dataset):
+
+    def __init__(self, demo_path):
+        demos = np.load(demo_path)
+        self.observations = demos["observations"]
+        self.actions = demos["actions"]
+
+    def __len__(self):
+        return len(self.observations)
+
+    def __getitem__(self, idx):
+        action = torch.from_numpy(self.actions[idx]).float()
+        obs = torch.from_numpy(self.observations[idx]).float()
+
+        return obs, action
+
+    @staticmethod
+    def get_dataloader(dataset, batch_size, shuffle=True, num_workers=0):
+        return DataLoader(dataset, batch_size, shuffle,
+            num_workers=num_workers)

@@ -8,25 +8,21 @@ from omegaconf import OmegaConf
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--eval-json", required=True,
-        help="Phase I generalist evaluation results.")
-    parser.add_argument("--succ-thresh", default=0.7,
+    parser.add_argument("--env", required=True)
+    parser.add_argument("--succ-thresh", default=0.2, type=float,
         help="The success rate upper bound requiring specialist training.")
-    parser.add_argument("--n-model-spe", default=5,
+    parser.add_argument("--n-model-spe", default=1, type=int,
         help="The number of models each specialist is trained on.")
-    parser.add_argument("--n-steps-spe", default=5000000, type=int,
+    parser.add_argument("--n-steps-spe", default=3000000, type=int,
         help="The number of training steps for each specialist.")
-    parser.add_argument("--cfg", required=True)
-    parser.add_argument("--spe-init", required=True,
-        help="The model path to initialize each specialist.")
     args = parser.parse_args()
 
     random.seed(42)
     np.random.seed(42)
-    
-    with open(args.eval_json, "r") as f:
+
+    with open(f"logs/{args.env}/eval_phase1_gen.json", "r") as f:
         eval_res = json.load(f)
-    
+
     low_perf_models = []
     high_perf_models = []
     low_perf_succ = 0
@@ -65,15 +61,14 @@ def main():
             beg = i * args.n_model_spe
             end = n_low_models
         grouping[f"spe{i}"] = low_perf_models[beg:end]
-    
-    cfg = OmegaConf.load(f"configs/{args.cfg}.yaml")
-    trial_name = cfg.trial_name.replace("gen_phase1", "spe_phase2")
+
+    cfg = OmegaConf.load(f"logs/{args.env}/phase1_gen.yaml")
+    trial_name = cfg.trial_name.replace("phase1_gen", "phase2")
     for spe_id, model_ids in grouping.items():
         cfg.env.model_ids = ",".join(model_ids)
         cfg.trial_name = f"{trial_name}_{spe_id}"
         cfg.train.total_steps = args.n_steps_spe
-        cfg.init_model_path = args.spe_init
-        with open(f"configs/{args.cfg.replace('gen_phase1', 'spe_phase2')}_{spe_id}.yaml", "w") as f:
+        with open(f"logs/{args.env}/phase2_{spe_id}.yaml", "w") as f:
             OmegaConf.save(config=cfg, f=f)
 
 

@@ -19,20 +19,25 @@ from evaluate import single_evaluate
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cfg", required=True, help="Config name.")
-    parser.add_argument("--model-path", required=True)
+    parser.add_argument("--env", required=True)
+    parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
-    cfg = OmegaConf.load(f"configs/{args.cfg}.yaml")
+    cfg = OmegaConf.load(f"logs/{args.env}/phase1_gen.yaml")
+    if args.debug:
+        cfg.eval.n_final_eval_episodes = 2
+        cfg.env.n_env_procs = 8
+    model_path = f"logs/{args.env}/phase1_gen.zip"
     res = {}
 
-    for model_id in cfg.env.model_ids:
+    for model_id in cfg.env.model_ids.split(","):
         print(f"Evaluating model {model_id}...")
-        succ_rate = single_evaluate(cfg, str(model_id), False, args.model_path)
+        succ_rate = single_evaluate(cfg, str(model_id), False, model_path)
         res[model_id] = succ_rate
-    
-    save_dir = os.path.dirname(args.model_path)
-    with open(os.path.join(save_dir, "eval_gen_phase1_res.json"), "w") as f:
-        json.dump(res, f)
+
+    save_dir = f"logs/{args.env}"
+    if not args.debug:
+        with open(os.path.join(save_dir, "eval_phase1_gen.json"), "w") as f:
+            json.dump(res, f)
 
 
 if __name__ == "__main__":

@@ -1,21 +1,22 @@
-trial_name: liftcube_gen_phase1_ppo
+trial_name: pushchair_phase1_gen_sac
 log_dir: logs
 
 env:
-    name: LiftCube-v1
+    name: PushChair-v2
     # number of parallel envs
     n_env_procs: 32
     # observation mode
     obs_mode: "state"
     # control mode/action mode
-    act_mode: pd_ee_delta_pose
+    act_mode: base_pd_joint_vel_arm_pd_joint_vel
     seed: 42
+    model_ids: 3001,3003,3005,3008,3010,3013,3016,3020,3021,3022,3024,3025,3027,3030,3031,3032,3038,3045,3047,3050,3051,3063,3070,3071,3073,3076
 
 train:
     # max number of steps in one training episode
     max_eps_steps: 200
     # total number of training steps
-    total_steps: 1000000
+    total_steps: 20000000
     # number of steps to run before each network evaluation
     rollout_steps: 5000
     # batch size in each update
@@ -24,13 +25,13 @@ train:
     gamma: 0.99
     lr: 0.0003
 
-model_name: PPO
+model_name: SAC
 net_arch: [256, 256]
 model_kwargs:
     verbose: 1
     # inverse of reward scale in SAC paper
     # larger ent_coef means stronger exploration, auto means learnable scale
-    ent_coef: 0
+    ent_coef: auto
 
 eval:
     # evaluation frequency, measured by the number of network updates

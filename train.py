@@ -2,7 +2,6 @@
 import argparse
 import os
 import os.path as osp
-from copy import deepcopy
 
 import gym
 import mani_skill2.envs
@@ -10,56 +9,39 @@ import numpy as np
 import wandb
 from mani_skill2.utils.wrappers import RecordEpisode
 from omegaconf import OmegaConf
+from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.utils import set_random_seed
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, VecVideoRecorder
 from wandb.integration.sb3 import WandbCallback
 
-from dapg import DAPGSAC
-from demo import DemoNpzDataset
 from utils import ContinuousTaskWrapper, SuccessInfoWrapper
 
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--env", required=True)
-    # parser.add_argument("--cfg", required=True, help="Config name.")
-    # parser.add_argument("--model-path", default=None)
-    # parser.add_argument("--demo-path", required=True)
-    parser.add_argument("--debug", action="store_true")
-    args = parser.parse_args()
-
-    return args
-
-
-def main():
-    args = parse_args()
-    cfg = OmegaConf.load(f"logs/{args.env}/phase3_gen.yaml")
-
+def train(args, cfg):
     if not args.debug:
-        wandb.login(key="afc534a6cee9821884737295e042db01471fed6a")
+        wandb_cfg = OmegaConf.load(f"wandb_cfg.yaml")
+        wandb.login(key=wandb_cfg.key)
         wandb.init(
-            entity="kaiming-kuang",
+            entity=wandb_cfg.entity,
             # set the wandb project where this run will be logged
-            project="cse-291a-project2",
+            project=wandb_cfg.project,
             # track hyperparameters and run metadata
             config=cfg,
             sync_tensorboard=True,
             monitor_gym=True
         )
         wandb.run.name = cfg.trial_name
-    else:
-        cfg.env.n_env_procs = 2
 
-    log_dir = f"logs/{args.env}/phase3_gen"
+    log_dir = cfg.log_dir
     os.makedirs(log_dir, exist_ok=True)
 
-    if "seed" in cfg.env:
-        set_random_seed(cfg.env.seed)
+    set_random_seed(args.seed)
 
     def make_env(
         env_id: str,
+        model_ids=None,
         max_episode_steps: int = None,
         record_dir: str = None,
     ):
@@ -67,12 +49,21 @@ def main():
             # NOTE: Import envs here so that they are registered with gym in subprocesses
             import mani_skill2.envs
 
-            env = gym.make(
-                env_id,
-                obs_mode=cfg.env.obs_mode,
-                reward_mode="dense",
-                control_mode=cfg.env.act_mode
-            )
+            if model_ids is not None:
+                env = gym.make(
+                    env_id,
+                    obs_mode=cfg.env.obs_mode,
+                    reward_mode="dense",
+                    control_mode=cfg.env.act_mode,
+                    model_ids=model_ids.split(",")
+                )
+            else:
+                env = gym.make(
+                    env_id,
+                    model_idsobs_mode=cfg.env.obs_mode,
+                    reward_mode="dense",
+                    control_mode=cfg.env.act_mode
+                )
             # For training, we regard the task as a continuous task with infinite horizon.
             # you can use the ContinuousTaskWrapper here for that
             if max_episode_steps is not None:
@@ -89,7 +80,7 @@ def main():
     # create eval environment
     record_dir = osp.join(log_dir, "videos")
     eval_env = SubprocVecEnv(
-        [make_env(cfg.env.name, record_dir=record_dir) for _ in range(1)]
+        [make_env(cfg.env.name, cfg.env.model_ids, record_dir=record_dir) for _ in range(1)]
     )
     eval_env = VecMonitor(eval_env)  # attach this so SB3 can log reward metrics
     eval_env.seed(cfg.env.seed)
@@ -98,7 +89,7 @@ def main():
     # Create vectorized environments for training
     env = SubprocVecEnv(
         [
-            make_env(cfg.env.name, max_episode_steps=cfg.train.max_eps_steps)
+            make_env(cfg.env.name, cfg.env.model_ids, max_episode_steps=cfg.train.max_eps_steps)
             for _ in range(cfg.env.n_env_procs)
         ]
     )
@@ -106,13 +97,7 @@ def main():
     env.seed(cfg.env.seed)
     env.reset()
 
-    # demo dataloader
-    demo_ds = DemoNpzDataset(f"logs/{args.env}/demos.npz")
-    demo_dl = DemoNpzDataset.get_dataloader(demo_ds, cfg.train.demo_batch_size)
-
     model = eval(cfg.model_name)(
-        cfg.train.lamb_0,
-        cfg.train.lamb_1,
         "MlpPolicy",
         env,
         batch_size=cfg.train.batch_size,
@@ -123,8 +108,14 @@ def main():
         **cfg.model_kwargs
     )
 
+    # if args.eval:
     # load model
-    model.set_parameters(f"logs/{args.env}/phase1_gen.zip")
+    if args.model_path is not None:
+        model_path = args.model_path
+        model.set_parameters(model_path)
+    if "init_model_path" in cfg:
+        model_path = cfg.init_model_path
+        model.set_parameters(model_path)
 
     # define callbacks to periodically save our model and evaluate it to help monitor training
     # the below freq values will save every 10 rollouts
@@ -132,12 +123,12 @@ def main():
         eval_env,
         best_model_save_path=log_dir,
         log_path=log_dir,
-        eval_freq=10 * cfg.train.rollout_steps // cfg.env.n_env_procs,
+        eval_freq=cfg.eval.eval_freq * cfg.train.rollout_steps // cfg.env.n_env_procs,
         deterministic=True,
         render=False,
     )
     checkpoint_callback = CheckpointCallback(
-        save_freq=10 * cfg.train.rollout_steps // cfg.env.n_env_procs,
+        save_freq=cfg.eval.eval_freq * cfg.train.rollout_steps // cfg.env.n_env_procs,
         save_path=log_dir,
         name_prefix="rl_model",
         save_replay_buffer=False,
@@ -151,7 +142,6 @@ def main():
     model.learn(
         cfg.train.total_steps,
         callback=callbacks,
-        demos=demo_dl
     )
     # Save the final model
     model.save(osp.join(log_dir, "latest_model"))
@@ -176,7 +166,3 @@ def main():
 
     if not args.debug:
         wandb.finish()
-
-
-if __name__ == "__main__":
-    main()

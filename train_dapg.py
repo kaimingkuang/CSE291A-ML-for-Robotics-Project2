@@ -16,6 +16,7 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
 from wandb.integration.sb3 import WandbCallback
 
+from dapg import DAPGPPO
 from demo import DemoNpzDataset
 from gail import GAILSAC
 from utils import ContinuousTaskWrapper, SuccessInfoWrapper
@@ -27,8 +28,7 @@ def parse_args():
     parser.add_argument("--seed", required=True, type=int)
     parser.add_argument("--n-steps", default=3000000, type=int)
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--by-pcd", action="store_true")
-    parser.add_argument("--by-orc", action="store_true")
+    parser.add_argument("--name", default=None)
     args = parser.parse_args()
 
     return args
@@ -36,18 +36,19 @@ def parse_args():
 
 def main():
     args = parse_args()
-    args.seed = 42 * args.seed
-    cfg = OmegaConf.load(f"logs/{args.env}/seed={args.seed}/phase1_gen/phase1_gen.yaml")
-    cfg.model_name = "GAILSAC"
+    cfg = OmegaConf.load(f"logs/{args.env}/phase1_gen.yaml")
+    cfg.model_name = "DAPGPPO"
+    # cfg.model_name = "GAILSAC"
     cfg.train.total_steps = args.n_steps
-    if args.by_pcd:
-        cfg.trial_name = f"{args.env}_phase3_gen_by_pcd"
-    elif args.by_orc:
-        cfg.trial_name = f"{args.env}_phase3_gen_by_orc"
+    if args.name is None:
+        cfg.trial_name = cfg.trial_name.replace("phase1_gen", "phase3_gen")
     else:
-        cfg.trial_name = f"{args.env}_phase3_gen"
+        cfg.trial_name = args.name
     cfg.train.demo_batch_size = cfg.train.batch_size
-    OmegaConf.save(config=cfg, f=f"logs/{args.env}/seed={args.seed}/phase3_gen.yaml")
+    cfg.train.lamb_0 = 0.1
+    cfg.train.lamb_1 = 0.95
+    cfg.model_kwargs.ent_coef = 0
+    OmegaConf.save(config=cfg, f=f"logs/{args.env}/phase3_gen.yaml")
 
     if not args.debug:
         wandb.login(key="afc534a6cee9821884737295e042db01471fed6a")
@@ -62,17 +63,12 @@ def main():
         )
         wandb.run.name = cfg.trial_name
     else:
-        cfg.train.total_steps = 10000
+        cfg.train.total_steps = 1000000
         cfg.eval.eval_freq = 1
         cfg.env.n_env_procs = 8
         cfg.eval.n_final_eval_episodes = 10
-    
-    if args.by_pcd:
-        log_dir = f"logs/{args.env}/seed={args.seed}/phase3_gen_by_pcd"
-    elif args.by_orc:
-        log_dir = f"logs/{args.env}/seed={args.seed}/phase3_gen_by_orc"
-    else:
-        log_dir = f"logs/{args.env}/seed={args.seed}/phase3_gen"
+
+    log_dir = f"logs/{args.env}/{cfg.trial_name}"
     os.makedirs(log_dir, exist_ok=True)
 
     set_random_seed(args.seed)
@@ -130,6 +126,8 @@ def main():
     demo_dl = DemoNpzDataset.get_dataloader(demo_ds, cfg.train.demo_batch_size)
 
     model = eval(cfg.model_name)(
+        cfg.train.lamb_0,
+        cfg.train.lamb_1,
         "MlpPolicy",
         env,
         batch_size=cfg.train.batch_size,
@@ -141,7 +139,7 @@ def main():
     )
 
     # load model
-    model.set_parameters(f"logs/{args.env}/seed={args.seed}/phase1_gen.zip")
+    # model.set_parameters(f"logs/{args.env}/phase1_gen.zip")
 
     # define callbacks to periodically save our model and evaluate it to help monitor training
     # the below freq values will save every 10 rollouts

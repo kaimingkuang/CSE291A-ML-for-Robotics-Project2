@@ -51,7 +51,6 @@ def single_evaluate(cfg, model_ids, render, model_path):
             else:
                 env = gym.make(
                     env_id,
-                    model_ids,
                     obs_mode=cfg.env.obs_mode,
                     reward_mode="dense",
                     control_mode=cfg.env.act_mode
@@ -113,7 +112,7 @@ def single_evaluate(cfg, model_ids, render, model_path):
 
 def main():
     args = parse_args()
-    cfg = OmegaConf.load(f"configs/{args.cfg}.yaml")
+    cfg = OmegaConf.load(args.cfg)
 
     single_evaluate(cfg, args.model_ids, args.render, args.model_path)
 

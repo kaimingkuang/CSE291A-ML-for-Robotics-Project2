@@ -2,21 +2,21 @@ trial_name: _phase1_gen_sac
 log_dir: logs
 
 env:
-    name: PushChair-v2
+    name: StackCube-v1
     # number of parallel envs
     n_env_procs: 32
     # observation mode
     obs_mode: "state"
     # control mode/action mode
-    act_mode: base_pd_joint_vel_arm_pd_joint_vel
+    act_mode: pd_ee_delta_pose
     seed: 42
-    model_ids: 3001,3003,3005,3008,3010,3013,3016,3020,3021,3022,3024,3025,3027,3030,3031,3032,3038,3045,3047,3050,3051,3063,3070,3071,3073,3076
+    model_ids: "1,2,3,4"
 
 train:
     # max number of steps in one training episode
     max_eps_steps: 200
     # total number of training steps
-    total_steps: 20000000
+    total_steps: 25000000
     # number of steps to run before each network evaluation
     rollout_steps: 5000
     # batch size in each update

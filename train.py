@@ -36,6 +36,8 @@ def train(args, cfg):
 
     log_dir = cfg.log_dir
     os.makedirs(log_dir, exist_ok=True)
+    if "model_ids" not in cfg.env:
+        cfg.env.model_ids = None
 
     set_random_seed(args.seed)
 
@@ -60,7 +62,7 @@ def train(args, cfg):
             else:
                 env = gym.make(
                     env_id,
-                    model_idsobs_mode=cfg.env.obs_mode,
+                    obs_mode=cfg.env.obs_mode,
                     reward_mode="dense",
                     control_mode=cfg.env.act_mode
                 )
@@ -83,7 +85,7 @@ def train(args, cfg):
         [make_env(cfg.env.name, cfg.env.model_ids, record_dir=record_dir) for _ in range(1)]
     )
     eval_env = VecMonitor(eval_env)  # attach this so SB3 can log reward metrics
-    eval_env.seed(cfg.env.seed)
+    eval_env.seed(args.seed)
     eval_env.reset()
 
     # Create vectorized environments for training
@@ -94,7 +96,7 @@ def train(args, cfg):
         ]
     )
     env = VecMonitor(env)
-    env.seed(cfg.env.seed)
+    env.seed(args.seed)
     env.reset()
 
     model = eval(cfg.model_name)(
@@ -166,3 +168,14 @@ def train(args, cfg):
 
     if not args.debug:
         wandb.finish()
+
+
+if __name__ == "__main__":
+    env = gym.make(
+        "TurnFaucet-v2",
+        obs_mode="state",
+        reward_mode="dense",
+        control_mode="pd_ee_delta_pose"
+    )
+    obs = env.reset()
+    print(1)

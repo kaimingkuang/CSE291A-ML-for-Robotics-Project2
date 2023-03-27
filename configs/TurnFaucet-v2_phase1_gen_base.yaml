@@ -35,7 +35,7 @@ model_kwargs:
 
 eval:
     # evaluation frequency, measured by the number of network updates
-    eval_freq: 50
+    eval_freq: 10
     # number of episodes to run in each evaluation
     n_eval_episodes: 10
     n_final_eval_episodes: 100

@@ -14,13 +14,15 @@ def main():
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     args.model_path = None
+    args.seed = 42 * args.seed
 
-    log_dir = f"logs/{args.env}/phase1_gen"
+    log_dir = f"logs/{args.env}/seed={args.seed}/phase1_gen"
     os.makedirs(log_dir, exist_ok=True)
 
     shutil.copyfile(f"configs/{args.env}_phase1_gen_base.yaml",
-        f"logs/{args.env}/phase1_gen.yaml")
-    cfg = OmegaConf.load(f"logs/{args.env}/phase1_gen.yaml")
+        f"{log_dir}/phase1_gen.yaml")
+    cfg = OmegaConf.load(f"{log_dir}/phase1_gen.yaml")
+    cfg.trial_name = f"{args.env}_seed={args.seed}_phase1_gen"
     cfg.log_dir = log_dir
 
     if args.debug:

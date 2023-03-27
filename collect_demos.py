@@ -38,17 +38,32 @@ def run_episode(env, policy):
 
 
 def main():
-    set_random_seed(42)
-
     parser = ArgumentParser()
     parser.add_argument("--env", required=True)
-    parser.add_argument("--demos-per-model", default=10, type=int)
-    parser.add_argument("--max-trials-per-model", default=100, type=int)
+    parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--seed", required=True, type=int)
+    parser.add_argument("--by-pcd", action="store_true")
+    parser.add_argument("--by-orc", action="store_true")
+    parser.add_argument("--demos-per-model", default=100, type=int)
+    parser.add_argument("--max-trials-per-model", default=500, type=int)
 
     args = parser.parse_args()
-    cfg = OmegaConf.load(f"logs/{args.env}/phase1_gen.yaml")
-    model_ids = [str(x) for x in cfg.env.model_ids]
-    with open(f"logs/{args.env}/spe_models.json", "r") as f:
+    args.seed = 42 * args.seed
+    set_random_seed(args.seed)
+
+    if args.debug:
+        args.demos_per_model = 1
+        args.max_trials_per_model = 1
+    cfg = OmegaConf.load(f"logs/{args.env}/seed={args.seed}/phase1_gen.yaml")
+    model_ids = cfg.env.model_ids.split(",")
+    if args.by_pcd:
+        spe_model_path = f"logs/{args.env}/seed={args.seed}/spe_models_by_pcd.json"
+    elif args.by_orc:
+        spe_model_path = f"logs/{args.env}/seed={args.seed}/spe_models_by_orc.json"
+    else:
+        spe_model_path = f"logs/{args.env}/seed={args.seed}/spe_models.json"
+        
+    with open(spe_model_path, "r") as f:
         spe_model_map = json.load(f)
     spe_model_ids = list(chain(*[v for v in spe_model_map.values()]))
     gen_model_ids = [model_id for model_id in model_ids
@@ -81,7 +96,13 @@ def main():
             cfg.env.act_mode)
         policy_id = policy_model_map[model_id]
         phase = "phase1" if policy_id == "gen" else "phase2"
-        policy_weight_path = f"logs/{args.env}/{phase}_{policy_id}.zip"
+        if policy_id == "gen" or ((not args.by_pcd) and (not args.by_orc)):
+            policy_weight_path = f"logs/{args.env}/seed={args.seed}/{phase}_{policy_id}.zip"
+        elif args.by_pcd:
+            policy_weight_path = f"logs/{args.env}/seed={args.seed}/{phase}_{policy_id}_by_pcd.zip"
+        elif args.by_orc:
+            policy_weight_path = f"logs/{args.env}/seed={args.seed}/{phase}_{policy_id}_by_orc.zip"
+            
         policy.set_parameters(policy_weight_path)
 
         for t in range(args.max_trials_per_model):
@@ -102,9 +123,16 @@ def main():
 
     progress.close()
 
-    demos["observations"] = np.stack(demos["observations"])
-    demos["actions"] = np.stack(demos["actions"])
-    np.savez(f"logs/{args.env}/demos.npz", **demos)
+    if not args.debug:
+        demos["observations"] = np.stack(demos["observations"])
+        demos["actions"] = np.stack(demos["actions"])
+        if args.by_pcd:
+            demo_path = f"logs/{args.env}/seed={args.seed}/demos_by_pcd.npz"
+        elif args.by_orc:
+            demo_path = f"logs/{args.env}/seed={args.seed}/demos_by_orc.npz"
+        else:
+            demo_path = f"logs/{args.env}/seed={args.seed}/demos.npz"
+        np.savez(demo_path, **demos)
 
 
 if __name__ == "__main__":

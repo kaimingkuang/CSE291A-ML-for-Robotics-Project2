@@ -134,3 +134,4 @@ demos/
 logs/
 wandb/
 wandb_cfg.yaml
+Pointnet_Pointnet2_pytorch/

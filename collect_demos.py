@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 from itertools import chain
 
 import gym
+import h5py
 import mani_skill2.envs
 import numpy as np
 import torch
@@ -27,14 +28,26 @@ def run_episode(env, policy):
     done = False
     observations = [obs]
     actions = []
+    rewards = []
+    dones = []
+    infos = []
 
     while not done:
         action = policy.predict(obs, deterministic=True)[0]
         actions.append(action)
         obs, reward, done, info = env.step(action)
+        dones.append(int(done))
+        rewards.append(reward)
         observations.append(obs)
+        infos.append(info)
 
-    return observations[:-1], actions, info["success"]
+    observations = np.stack(observations)
+    actions = np.stack(actions)
+    rewards = np.stack(rewards)
+    dones = np.stack(dones)
+    infos = np.array(infos)
+
+    return observations, actions, rewards, dones, infos
 
 
 def main():
@@ -75,7 +88,6 @@ def main():
         for model in models:
             policy_model_map[model] = spe_id
 
-    demos = {"observations": [], "actions": [], "policy_id": [], "model_id": []}
     dummy_env = make_env(cfg.env.name, gen_model_ids, cfg.env.obs_mode,
         cfg.env.act_mode)
     policy = eval(cfg.model_name)(
@@ -88,6 +100,14 @@ def main():
         **cfg.model_kwargs
     )
     policy.policy.eval()
+
+    if args.by_pcd:
+        demo_path = f"logs/{args.env}/seed={args.seed}/demos_by_pcd.h5"
+    elif args.by_orc:
+        demo_path = f"logs/{args.env}/seed={args.seed}/demos_by_orc.h5"
+    else:
+        demo_path = f"logs/{args.env}/seed={args.seed}/demos.h5"
+    demo_file = h5py.File(demo_path, "w")
 
     progress = tqdm(total=len(model_ids))
     for model_id in model_ids:
@@ -102,19 +122,20 @@ def main():
             policy_weight_path = f"logs/{args.env}/seed={args.seed}/{phase}_{policy_id}_by_pcd.zip"
         elif args.by_orc:
             policy_weight_path = f"logs/{args.env}/seed={args.seed}/{phase}_{policy_id}_by_orc.zip"
-            
+
         policy.set_parameters(policy_weight_path)
 
         for t in range(args.max_trials_per_model):
-            progress.set_description_str(f"{model_id}: {demo_cnt}/{t}/{args.max_trials_per_model}")
-            obs, acts, success = run_episode(env, policy)
+            obs, acts, rewards, dones, infos = run_episode(env, policy)
 
-            if success:
-                demos["observations"] += obs
-                demos["actions"] += acts
-                demos["policy_id"] += [policy_id] * len(obs)
-                demos["model_id"] += [model_id] * len(obs)
+            if infos[-1]["success"]:
+                demo_file.create_dataset(f"traj_{model_id}_{demo_cnt}_obs", data=obs)
+                demo_file.create_dataset(f"traj_{model_id}_{demo_cnt}_acts", data=acts)
+                demo_file.create_dataset(f"traj_{model_id}_{demo_cnt}_rewards", data=rewards)
+                demo_file.create_dataset(f"traj_{model_id}_{demo_cnt}_dones", data=dones)
                 demo_cnt += 1
+
+            progress.set_description_str(f"{model_id}: {demo_cnt}/{t}/{args.max_trials_per_model}")
 
             if demo_cnt >= args.demos_per_model:
                 break
@@ -123,16 +144,7 @@ def main():
 
     progress.close()
 
-    if not args.debug:
-        demos["observations"] = np.stack(demos["observations"])
-        demos["actions"] = np.stack(demos["actions"])
-        if args.by_pcd:
-            demo_path = f"logs/{args.env}/seed={args.seed}/demos_by_pcd.npz"
-        elif args.by_orc:
-            demo_path = f"logs/{args.env}/seed={args.seed}/demos_by_orc.npz"
-        else:
-            demo_path = f"logs/{args.env}/seed={args.seed}/demos.npz"
-        np.savez(demo_path, **demos)
+    demo_file.close()
 
 
 if __name__ == "__main__":

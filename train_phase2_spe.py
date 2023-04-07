@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--start-idx", default=0, type=int)
     parser.add_argument("--by-pcd", action="store_true")
     parser.add_argument("--by-orc", action="store_true")
+    parser.add_argument("--model-id", default=None, type=str)
     args = parser.parse_args()
     args.seed = args.seed * 42
     args.spe_idx = args.spe_idx + args.start_idx
@@ -41,6 +42,9 @@ def main():
         cfg.eval.eval_freq = 1
         cfg.env.n_env_procs = 8
         cfg.eval.n_final_eval_episodes = 10
+    
+    if args.model_id is not None:
+        cfg.env.model_ids = args.model_id
 
     train(args, cfg)
 

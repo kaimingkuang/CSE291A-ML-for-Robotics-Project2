@@ -22,11 +22,11 @@ class GAILSAC(SAC):
             nn.Linear(256, 256),
             nn.Tanh(),
             nn.Linear(256, 1),
-            nn.Sigmoid()
         )
         self.discriminator.to(self.policy.device)
         self.dis_optimizer = AdamW(self.discriminator.parameters())
         self.dis_loss_fn = nn.BCELoss()
+        self.env_reward_proportion = 0.3
 
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
         # Switch to train mode (this affects batch norm / dropout)
@@ -40,18 +40,32 @@ class GAILSAC(SAC):
         self._update_learning_rate(optimizers)
 
         ent_coef_losses, ent_coefs = [], []
-        actor_losses, critic_losses = [], []
+        actor_losses, critic_losses, discriminator_losses = [], [], []
 
         for gradient_step, demo_batch in zip(range(gradient_steps), self.demos):
             # Sample replay buffer
             replay_data = self.replay_buffer.sample(batch_size, env=self._vec_normalize_env)
+
+            # combined the sample data with demos
+            demo_obs, demo_acts, demo_rewards, demo_next_obs, demo_dones = demo_batch
+            demo_obs = demo_obs.to(replay_data.observations.device)
+            demo_acts = demo_acts.to(replay_data.observations.device)
+            demo_rewards = demo_rewards.to(replay_data.observations.device)
+            demo_next_obs = demo_next_obs.to(replay_data.observations.device)
+            demo_dones = demo_dones.to(replay_data.observations.device)
+            sampled_batch = {}
+            sampled_batch["obs"] = torch.cat([replay_data.observations, demo_obs])
+            sampled_batch["actions"] = torch.cat([replay_data.actions, demo_acts])
+            sampled_batch["rewards"] = torch.cat([replay_data.rewards, demo_rewards])
+            sampled_batch["next_obs"] = torch.cat([replay_data.next_observations, demo_next_obs])
+            sampled_batch["dones"] = torch.cat([replay_data.dones, demo_dones])
 
             # We need to sample because `log_std` may have changed between two gradient steps
             if self.use_sde:
                 self.actor.reset_noise()
 
             # Action by the current actor for the sampled state
-            actions_pi, log_prob = self.actor.action_log_prob(replay_data.observations)
+            actions_pi, log_prob = self.actor.action_log_prob(sampled_batch["obs"])
             log_prob = log_prob.reshape(-1, 1)
 
             ent_coef_loss = None
@@ -75,19 +89,28 @@ class GAILSAC(SAC):
                 self.ent_coef_optimizer.step()
 
             with torch.no_grad():
+                # calculate discriminator rewards and combine them with the original rewards
+                discriminator_rewards = torch.sigmoid(self.discriminator(torch.cat([sampled_batch["obs"], sampled_batch["actions"]], dim=-1)))
+                assert sampled_batch["rewards"].size() == discriminator_rewards.size()
+                old_rewards = sampled_batch["rewards"]
+                # sampled_batch["rewards"] = self.env_reward_proportion * old_rewards + (1 - self.env_reward_proportion) * discriminator_rewards
+                sampled_batch["rewards"] = discriminator_rewards
+                clip_max = torch.clamp(old_rewards, min=-0.5)
+                sampled_batch["rewards"] = torch.clamp(sampled_batch["rewards"], max=clip_max)
+
                 # Select action according to policy
-                next_actions, next_log_prob = self.actor.action_log_prob(replay_data.next_observations)
+                next_actions, next_log_prob = self.actor.action_log_prob(sampled_batch["next_obs"])
                 # Compute the next Q values: min over all critics targets
-                next_q_values = torch.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
+                next_q_values = torch.cat(self.critic_target(sampled_batch["next_obs"], next_actions), dim=1)
                 next_q_values, _ = torch.min(next_q_values, dim=1, keepdim=True)
                 # add entropy term
                 next_q_values = next_q_values - ent_coef * next_log_prob.reshape(-1, 1)
                 # td error + entropy term
-                target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
+                target_q_values = sampled_batch["rewards"] + (1 - sampled_batch["dones"]) * self.gamma * next_q_values
 
             # Get current Q-values estimates for each critic network
             # using action from the replay buffer
-            current_q_values = self.critic(replay_data.observations, replay_data.actions)
+            current_q_values = self.critic(sampled_batch["obs"], sampled_batch["actions"])
 
             # Compute critic loss
             critic_loss = 0.5 * sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
@@ -101,40 +124,37 @@ class GAILSAC(SAC):
             # Compute actor loss
             # Alternative: actor_loss = torch.mean(log_prob - qf1_pi)
             # Min over all critic networks
-            q_values_pi = torch.cat(self.critic(replay_data.observations, actions_pi), dim=1)
+            q_values_pi = torch.cat(self.critic(sampled_batch["obs"], actions_pi), dim=1)
             min_qf_pi, _ = torch.min(q_values_pi, dim=1, keepdim=True)
             actor_loss = (ent_coef * log_prob - min_qf_pi).mean()
             actor_losses.append(actor_loss.item())
 
             # disciminator loss
             self.dis_optimizer.zero_grad()
-            demo_obs, demo_acts = demo_batch
-            bs = demo_obs.size(0)
+            replay_bs = replay_data.observations.size(0)
+            demo_bs = demo_obs.size(0)
             device = actor_loss.device
             # discriminator labels for demonstrations and the policy
-            demo_label = torch.ones(bs, 1, device=device, dtype=torch.float)
-            policy_label = torch.zeros(bs, 1, device=device, dtype=torch.float)
+            replay_labels = torch.zeros(replay_bs, 1, device=device, dtype=torch.float)
+            demo_labels = torch.ones(demo_bs, 1, device=device, dtype=torch.float)
 
             # calculate the discriminator loss for demos
             dis_inputs_demo = torch.cat((demo_obs, demo_acts), dim=1).to(device)
-            prob_demo = self.discriminator(dis_inputs_demo)
-            dis_loss = self.dis_loss_fn(prob_demo, demo_label)
+            prob_demo = torch.sigmoid(self.discriminator(dis_inputs_demo))
+            dis_loss = self.dis_loss_fn(prob_demo, demo_labels)
             # calculate the discriminator loss for the policy
-            dis_inputs_policy = torch.cat((replay_data.observations, actions_pi.detach()), dim=1).to(device)
-            prob_policy = self.discriminator(dis_inputs_policy)
-            dis_loss += self.dis_loss_fn(prob_policy, policy_label)
+            dis_inputs_policy = torch.cat((replay_data.observations, replay_data.actions), dim=1).to(device)
+            prob_policy = torch.sigmoid(self.discriminator(dis_inputs_policy))
+            dis_loss += self.dis_loss_fn(prob_policy, replay_labels)
 
-            # actor_loss = -discriminator_prob(policy_actions)
-            actor_inputs = torch.cat((replay_data.observations, actions_pi), dim=1).to(device)
-            actor_loss -= self.discriminator(actor_inputs).mean()
+            dis_loss.backward()
+            self.dis_optimizer.step()
+            discriminator_losses.append(dis_loss.item())
 
             # Optimize the actor and the discriminator
             self.actor.optimizer.zero_grad()
             actor_loss.backward()
             self.actor.optimizer.step()
-
-            dis_loss.backward()
-            self.dis_optimizer.step()
 
             # Update target networks
             if gradient_step % self.target_update_interval == 0:
@@ -148,6 +168,7 @@ class GAILSAC(SAC):
         self.logger.record("train/ent_coef", np.mean(ent_coefs))
         self.logger.record("train/actor_loss", np.mean(actor_losses))
         self.logger.record("train/critic_loss", np.mean(critic_losses))
+        self.logger.record("train/discriminator_loss", np.mean(discriminator_losses))
         if len(ent_coef_losses) > 0:
             self.logger.record("train/ent_coef_loss", np.mean(ent_coef_losses))
 

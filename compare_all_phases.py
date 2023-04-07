@@ -36,24 +36,14 @@ def main():
     for spe_id, v in phase2_res.items():
         phase2_res_flat.update(v)
     low_model_ids = list(phase2_res_flat.keys())
-    phase1_all_succ = sum(list(phase1_res.values())) / len(phase1_res)
-    phase1_low_succ = sum([succ for model_id, succ in phase1_res.items() if model_id in low_model_ids]) / len(phase2_res_flat)
-    phase1_high_succ = sum([succ for model_id, succ in phase1_res.items() if model_id not in low_model_ids]) / (len(phase1_res) - len(phase2_res_flat))
-    phase2_low_succ = sum(list(phase2_res_flat.values())) / len(phase2_res_flat)
-    phase3_all_succ = sum(list(phase3_res.values())) / len(phase3_res)
-    phase3_low_succ = sum([succ for model_id, succ in phase3_res.items() if model_id in low_model_ids]) / len(phase2_res_flat)
-    phase3_high_succ = sum([succ for model_id, succ in phase3_res.items() if model_id not in low_model_ids]) / (len(phase1_res) - len(phase2_res_flat))
-    res = [
-        {"phase": 1, "subset": "all", "succ": phase1_all_succ},
-        {"phase": 1, "subset": "low", "succ": phase1_low_succ},
-        {"phase": 1, "subset": "high", "succ": phase1_high_succ},
-        {"phase": 2, "subset": "low", "succ": phase2_low_succ},
-        {"phase": 3, "subset": "all", "succ": phase3_all_succ},
-        {"phase": 3, "subset": "low", "succ": phase3_low_succ},
-        {"phase": 3, "subset": "high", "succ": phase3_high_succ},
-    ]
-    res = pd.DataFrame(res)
-    print(res)
+
+    phase1_res = pd.DataFrame([{"group": "high", "model_id": model_id, "phase1_succ": succ} for model_id, succ in phase1_res.items()])
+    phase1_res.loc[phase1_res.model_id.isin(low_model_ids), "group"] = "low"
+    phase3_res = pd.DataFrame([{"group": "high", "model_id": model_id, "phase3_succ": succ} for model_id, succ in phase3_res.items()])
+    phase3_res.loc[phase3_res.model_id.isin(low_model_ids), "group"] = "low"
+    res = phase1_res.merge(phase3_res, on=["group", "model_id"], how="left")
+    res["diff"] = res["phase3_succ"] - res["phase1_succ"]
+    print(res.groupby("group")["diff"].mean())
 
 
 if __name__ == "__main__":

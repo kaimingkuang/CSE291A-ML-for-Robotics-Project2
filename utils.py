@@ -1,5 +1,7 @@
 import gym
+import h5py
 import numpy as np
+from imitation.data.types import TrajectoryWithRew
 from omegaconf import OmegaConf
 from stable_baselines3.common.callbacks import EventCallback
 from tensorboard.backend.event_processing import event_accumulator

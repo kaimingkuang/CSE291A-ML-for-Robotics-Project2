@@ -126,7 +126,7 @@ def main():
     env.reset()
 
     # demo dataloader
-    demo_ds = DemoNpzDataset(f"logs/{args.env}/demos.npz")
+    demo_ds = DemoNpzDataset(f"logs/{args.env}/seed={args.seed}/demos.npz")
     demo_dl = DemoNpzDataset.get_dataloader(demo_ds, cfg.train.demo_batch_size)
 
     model = eval(cfg.model_name)(
